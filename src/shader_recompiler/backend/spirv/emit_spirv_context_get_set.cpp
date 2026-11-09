@@ -4,15 +4,10 @@
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <algorithm>
 #include <bit>
-#include <cstdlib>
-#include <cstring>
 #include <tuple>
-#include <vector>
 #include <utility>
 
-#include "shader_recompiler/backend/spirv/emit_spirv.h"
 #include "shader_recompiler/backend/spirv/emit_spirv_instructions.h"
 #include "shader_recompiler/backend/spirv/spirv_emit_context.h"
 
@@ -63,9 +58,6 @@ std::optional<OutAttr> OutputAttrPointer(EmitContext& ctx, IR::Attribute attr) {
     }
 
     switch (attr) {
-    case IR::Attribute::VprsTableIndex:
-        // The graphics pipeline validates the conservative full-pixel-rate fallback.
-        return std::nullopt;
     case IR::Attribute::PointSize:
         return ctx.output_point_size;
     case IR::Attribute::PositionX:
@@ -498,38 +490,6 @@ void EmitSetFragColor(EmitContext& ctx, u32 index, u32 component, Id value) {
     const Id component_id{ctx.Const(component)};
     const AttributeType type{ctx.runtime_info.color_output_types[index]};
     if (type == AttributeType::Float) {
-        // EDEN_NAN_OUTPUTS=magenta|zero|big (diagnostic): float color outputs that are NaN or
-        // infinite become magenta, to find the draw that makes them, or zero; "big" also marks
-        // values over 4096 magenta.
-        static const char nan_outputs = [] {
-            const char* value = std::getenv("EDEN_NAN_OUTPUTS");
-            return value != nullptr ? value[0] : '\0';
-        }();
-        if (nan_outputs == 'm' || nan_outputs == 'z' || nan_outputs == 'b') {
-            Id bad{ctx.OpLogicalOr(ctx.U1, ctx.OpIsNan(ctx.U1, value), ctx.OpIsInf(ctx.U1, value))};
-            if (nan_outputs == 'b') {
-                bad = ctx.OpLogicalOr(ctx.U1, bad,
-                                      ctx.OpFOrdGreaterThan(ctx.U1, ctx.OpFAbs(ctx.F32[1], value),
-                                                            ctx.Const(4096.0f)));
-            }
-            const f32 replacement{nan_outputs != 'z' && component != 1 ? 1.0f : 0.0f};
-            value = ctx.OpSelect(ctx.F32[1], bad, ctx.Const(replacement), value);
-        }
-        // EDEN_DEBUG_SHADER=<hash>[,<hash>...] (diagnostic): those fragment shaders output a magenta
-        // bright enough to stay visible after HDR exposure (1000), with alpha one.
-        static const std::vector<u64> debug_hashes = [] {
-            std::vector<u64> hashes;
-            for (const char* cursor = std::getenv("EDEN_DEBUG_SHADER"); cursor && *cursor;) {
-                hashes.push_back(std::strtoull(cursor, nullptr, 16));
-                cursor = std::strchr(cursor, ',');
-                if (cursor) ++cursor;
-            }
-            return hashes;
-        }();
-        if (!debug_hashes.empty() &&
-            std::find(debug_hashes.begin(), debug_hashes.end(), debug_shader_hash) != debug_hashes.end()) {
-            value = ctx.Const(component == 1 ? 0.0f : component == 3 ? 1.0f : 1000.0f);
-        }
         const Id pointer{ctx.OpAccessChain(ctx.output_f32, ctx.frag_color.at(index), component_id)};
         ctx.OpStore(pointer, value);
     } else if (type == AttributeType::UnsignedInt) {

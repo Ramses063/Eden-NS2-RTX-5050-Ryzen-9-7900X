@@ -7,11 +7,9 @@
 #pragma once
 
 #include <array>
-#include <span>
 #include "common/container/unordered_map.h"
 
 #include "common/common_types.h"
-#include "shader_recompiler/frontend/ampere/instruction.h"
 #include "shader_recompiler/program_header.h"
 #include "shader_recompiler/shader_info.h"
 #include "shader_recompiler/stage.h"
@@ -68,7 +66,7 @@ struct ConstBufferAddr {
     IR::U32 dynamic_offset;
     u32 count;
     bool has_secondary;
-    BufferTextureSource buffer_source{};
+    u32 handle_program{~0U}; ///< index in Info::handle_programs for a handle computed per draw
 };
 
 class Environment {
@@ -77,12 +75,21 @@ public:
 
     [[nodiscard]] virtual u64 ReadInstruction(u32 address) = 0;
 
-    [[nodiscard]] virtual bool HasNativeRegisterCopies() const { return false; }
-
     [[nodiscard]] virtual u32 TranslateProgramAddress(u32 address) const { return address; }
 
-    // Native raw-pointer layouts can mix addresses and scalar parameters.
+    /// A Switch 2 native program lowered to Maxwell instructions. Its storage buffer pointers are
+    /// raw 8-byte arguments in constant buffers, without the NVN descriptor layout.
+    [[nodiscard]] virtual bool IsNativeProgram() const { return false; }
+
+    /// Native programs: whether the 8-byte constant at (index, offset) is a mapped GPU address.
+    /// Native argument tables mix pointers with scalars (sizes, strides).
     [[nodiscard]] virtual bool IsCbufStorageBufferPointer(u32, u32) { return true; }
+
+    /// Native programs: whether the 8 bytes at `indirect` past the pointer at (index, offset) are
+    /// a mapped GPU address (a pointer table the program loads its buffer pointer from).
+    [[nodiscard]] virtual bool IsCbufIndirectStorageBufferPointer(u32, u32, u32) {
+        return true;
+    }
 
     [[nodiscard]] virtual u32 ReadCbufValue(u32 cbuf_index, u32 cbuf_offset) = 0;
 
@@ -109,32 +116,6 @@ public:
 
     virtual void Dump(u64 pipeline_hash, u64 shader_hash) = 0;
 
-    /// True when the program is translated by the native Ampere frontend instead of the Maxwell one.
-    [[nodiscard]] virtual bool IsNativeAmpere() const {
-        return false;
-    }
-
-    /// Native Ampere instructions of the program; only valid when IsNativeAmpere() is true.
-    [[nodiscard]] virtual std::span<const Ampere::Instruction> NativeProgram() const {
-        return {};
-    }
-
-    /// Instruction indices a native computed branch (BRX) may reach, resolved by the environment.
-    [[nodiscard]] virtual std::span<const u32> NativeIndirectTargets() const {
-        return {};
-    }
-
-    /// Instruction indices the native computed branch (BRX) at instruction `index` may reach. Environments
-    /// that capture one table per branch return it here; the default is the program-wide table.
-    [[nodiscard]] virtual std::span<const u32> NativeIndirectTargetsAt([[maybe_unused]] u32 index) const {
-        return NativeIndirectTargets();
-    }
-
-    /// Guest address of native instruction 0, relative to the program base.
-    [[nodiscard]] virtual u32 NativeSourceBase() const {
-        return 0;
-    }
-
     [[nodiscard]] const ProgramHeader& SPH() const noexcept {
         return sph;
     }
@@ -155,9 +136,22 @@ public:
         return is_proprietary_driver;
     }
 
+    /// Task and mesh programs: SET_MESH_SHADER_A, SET_MESH_SHADER_B and SET_MESH_INIT_SHADER.
+    [[nodiscard]] const std::array<u32, 3>& MeshRegisters() const noexcept {
+        return mesh_registers;
+    }
+
+    /// Mesh programs: the header of the pass-through geometry program bound with them, whose
+    /// output map lists the per-primitive outputs.
+    [[nodiscard]] const ProgramHeader& MeshPrimitiveHeader() const noexcept {
+        return mesh_primitive_header;
+    }
+
 protected:
     ProgramHeader sph{};
     std::array<u32, 8> gp_passthrough_mask{};
+    std::array<u32, 3> mesh_registers{};
+    ProgramHeader mesh_primitive_header{};
     Stage stage{};
     u32 start_address{};
     bool is_proprietary_driver{};

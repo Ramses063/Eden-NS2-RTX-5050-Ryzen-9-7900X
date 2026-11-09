@@ -13,7 +13,6 @@ class System;
 }
 
 #include <span>
-#include <string>
 
 #include "common/common_types.h"
 #include "core/hle/kernel/svc_types.h"
@@ -23,7 +22,6 @@ namespace Kernel::Svc {
 Result SetHeapSize(Core::System& system, uint64_t* out_address, uint64_t size);
 Result SetMemoryPermission(Core::System& system, uint64_t address, uint64_t size, MemoryPermission perm);
 Result SetMemoryAttribute(Core::System& system, uint64_t address, uint64_t size, uint32_t mask, uint32_t attr);
-Result SetGpuMemoryAttribute(Core::System& system, uint64_t address, uint64_t size, uint32_t mask, uint32_t attr);
 Result MapMemory(Core::System& system, uint64_t dst_address, uint64_t src_address, uint64_t size);
 Result UnmapMemory(Core::System& system, uint64_t dst_address, uint64_t src_address, uint64_t size);
 Result QueryMemory(Core::System& system, uint64_t out_memory_info, PageInfo* out_page_info, uint64_t address);
@@ -71,7 +69,7 @@ Result GetResourceLimitLimitValue(Core::System& system, int64_t* out_limit_value
 Result GetResourceLimitCurrentValue(Core::System& system, int64_t* out_current_value, Handle resource_limit_handle, LimitableResource which);
 Result SetThreadActivity(Core::System& system, Handle thread_handle, ThreadActivity thread_activity);
 Result GetThreadContext3(Core::System& system, uint64_t out_context, Handle thread_handle);
-Result WaitForAddress(Core::System& system, uint64_t address, ArbitrationType arb_type, int32_t value, int64_t timeout_ns);
+Result WaitForAddress(Core::System& system, uint64_t address, ArbitrationType arb_type, int64_t value, int64_t timeout_ns);
 Result SignalToAddress(Core::System& system, uint64_t address, SignalType signal_type, int32_t value, int32_t count);
 void SynchronizePreemptionState(Core::System& system);
 Result GetResourceLimitPeakValue(Core::System& system, int64_t* out_peak_value, Handle resource_limit_handle, LimitableResource which);
@@ -313,7 +311,7 @@ Result GetResourceLimitLimitValue64(Core::System& system, int64_t* out_limit_val
 Result GetResourceLimitCurrentValue64(Core::System& system, int64_t* out_current_value, Handle resource_limit_handle, LimitableResource which);
 Result SetThreadActivity64(Core::System& system, Handle thread_handle, ThreadActivity thread_activity);
 Result GetThreadContext364(Core::System& system, uint64_t out_context, Handle thread_handle);
-Result WaitForAddress64(Core::System& system, uint64_t address, ArbitrationType arb_type, int32_t value, int64_t timeout_ns);
+Result WaitForAddress64(Core::System& system, uint64_t address, ArbitrationType arb_type, int64_t value, int64_t timeout_ns);
 Result SignalToAddress64(Core::System& system, uint64_t address, SignalType signal_type, int32_t value, int32_t count);
 void SynchronizePreemptionState64(Core::System& system);
 Result GetResourceLimitPeakValue64(Core::System& system, int64_t* out_peak_value, Handle resource_limit_handle, LimitableResource which);
@@ -506,7 +504,6 @@ enum class SvcId : u32 {
     CreateResourceLimit = 0x7d,
     SetResourceLimitLimitValue = 0x7e,
     CallSecureMonitor = 0x7f,
-    SetGpuMemoryAttribute = 0x80,
     MapInsecureMemory = 0x90,
     UnmapInsecureMemory = 0x91,
 };
@@ -533,9 +530,6 @@ void SvcWrap_SendSyncRequestLight64(Core::System& system, std::span<uint64_t, 8>
 // Defined in svc_secure_monitor_call.cpp.
 void SvcWrap_CallSecureMonitor64From32(Core::System& system, std::span<uint64_t, 8> args);
 void SvcWrap_CallSecureMonitor64(Core::System& system, std::span<uint64_t, 8> args);
-
-// Diagnostic (EDEN_DIAG_SVC=1): the SVC a guest thread is currently inside, for the thread dump.
-std::string DescribeDiagSvc(u64 thread_id);
 
 // Perform a supervisor call by index.
 void Call(Core::System& system, u32 imm);

@@ -54,14 +54,6 @@ std::pair<Id, Id> AtomicArgs(EmitContext& ctx) {
     return {scope, semantics};
 }
 
-Id GlobalAtomic32(EmitContext& ctx, size_t kind, Id address, Id value) {
-    if (!ctx.profile.support_int64) {
-        LOG_WARNING(Shader_SPIRV, "Int64 not supported, ignoring memory operation");
-        return ctx.Const(0u);
-    }
-    return ctx.OpFunctionCall(ctx.U32[1], ctx.global_atomic_funcs[kind], address, value);
-}
-
 Id SharedAtomicU32(EmitContext& ctx, Id offset, Id value,
                    Id (Sirit::Module::*atomic_func)(Id, Id, Id, Id, Id)) {
     const Id pointer{SharedPointer(ctx, offset)};
@@ -114,6 +106,14 @@ Id StorageAtomicU32x2(EmitContext& ctx, const IR::Value& binding, const IR::Valu
     const Id result{(ctx.*non_atomic_func)(ctx.U32[2], value, original_value)};
     ctx.OpStore(pointer, result);
     return original_value;
+}
+
+Id GlobalAtomic(EmitContext& ctx, EmitContext::GlobalAtomic kind, Id type, Id address, Id value) {
+    const Id func{ctx.global_atomic_funcs[static_cast<size_t>(kind)]};
+    if (!Sirit::ValidId(func)) {
+        throw NotImplementedException("SPIR-V Instruction");
+    }
+    return ctx.OpFunctionCall(type, func, address, value);
 }
 } // Anonymous namespace
 
@@ -426,47 +426,47 @@ Id EmitStorageAtomicMaxF32x2(EmitContext& ctx, const IR::Value& binding, const I
 }
 
 Id EmitGlobalAtomicIAdd32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 0, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::IAdd, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicSMin32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 1, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::SMin, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicUMin32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 2, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::UMin, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicSMax32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 3, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::SMax, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicUMax32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 4, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::UMax, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicInc32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 9, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::Inc, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicDec32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 10, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::Dec, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicAnd32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 5, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::And, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicOr32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 6, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::Or, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicXor32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 7, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::Xor, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicExchange32(EmitContext& ctx, Id address, Id value) {
-    return GlobalAtomic32(ctx, 8, address, value);
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::Exchange, ctx.U32[1], address, value);
 }
 
 Id EmitGlobalAtomicIAdd64(EmitContext&) {
@@ -557,8 +557,8 @@ Id EmitGlobalAtomicExchange32x2(EmitContext&) {
     throw NotImplementedException("SPIR-V Instruction");
 }
 
-Id EmitGlobalAtomicAddF32(EmitContext&) {
-    throw NotImplementedException("SPIR-V Instruction");
+Id EmitGlobalAtomicAddF32(EmitContext& ctx, Id address, Id value) {
+    return GlobalAtomic(ctx, EmitContext::GlobalAtomic::AddF32, ctx.F32[1], address, value);
 }
 
 Id EmitGlobalAtomicAddF16x2(EmitContext&) {

@@ -15,7 +15,6 @@ namespace Shader::IR {
 
 enum class Attribute : u64 {
 #define SRIR_ATTRIBUTE_LIST \
-    SRIR_ATTRIBUTE_ELEM(VprsTableIndex, 23) \
     SRIR_ATTRIBUTE_ELEM(PrimitiveId, 24) \
     SRIR_ATTRIBUTE_ELEM(Layer, 25) \
     SRIR_ATTRIBUTE_ELEM(ViewportIndex, 26) \
@@ -238,7 +237,7 @@ constexpr size_t NUM_GENERICS = 32;
 constexpr size_t NUM_FIXEDFNCTEXTURE = 10;
 
 [[nodiscard]] inline bool IsGeneric(Attribute attribute) noexcept {
-    return attribute >= Attribute::Generic0X && attribute <= Attribute::Generic31X;
+    return attribute >= Attribute::Generic0X && attribute <= Attribute::Generic31W;
 }
 
 [[nodiscard]] inline bool IsLegacyAttribute(Attribute attribute) noexcept {

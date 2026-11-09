@@ -406,14 +406,15 @@ Vp9PictureInfo VP9::GetVp9PictureInfo() {
     host1x.gmmu_manager.ReadBlock(regs.picture_info_offset.Address(), &current_picture_info, sizeof(PictureInfo));
     Vp9PictureInfo vp9_info = current_picture_info.Convert();
 
-    // The segmentation probabilities are kept with the frame: a frame can be written out after
-    // the next picture's registers (and probability table) were set up.
-    EntropyProbs entropy_probs;
-    host1x.gmmu_manager.ReadBlock(regs.vp9_prob_tab_buffer_offset.Address(), &entropy_probs,
-                                  sizeof(entropy_probs));
-    entropy_probs.Convert(vp9_info.entropy);
+    InsertEntropy(regs.vp9_prob_tab_buffer_offset.Address(), vp9_info.entropy);
+
+    EntropyProbs entropy_probs{};
+    host1x.gmmu_manager.ReadBlock(regs.vp9_prob_tab_buffer_offset.Address(),
+                                  &entropy_probs, sizeof(entropy_probs));
+
     vp9_info.seg_tree_probs = entropy_probs.mb_segment_tree_probs;
     vp9_info.seg_pred_probs = entropy_probs.segment_pred_probs;
+
 
     // surface_luma_offset[0:3] contains the address of the reference frame offsets in the following
     // order: last, golden, altref, current.

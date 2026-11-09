@@ -76,8 +76,8 @@ private:
         }
 
         // Destroys the objects themselves: Storage's destructor is empty on purpose (the union
-        // also holds unused slots), so destroying the Storage elements would skip T's destructor
-        // and leak what the objects own (e.g. an IR::Inst's phi operand list).
+        // also holds unused slots), so destroying the Storage elements would skip T's
+        // destructor and leak what the objects own (e.g. an IR::Inst's phi operand list).
         void Release() {
             for (size_t index = 0; index < used_objects; ++index) {
                 std::destroy_at(&storage[index].object);

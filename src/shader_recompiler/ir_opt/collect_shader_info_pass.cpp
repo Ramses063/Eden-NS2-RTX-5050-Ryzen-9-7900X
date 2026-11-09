@@ -374,16 +374,6 @@ void VisitUsages(Info& info, IR::Inst& inst) {
     case IR::Opcode::WriteGlobalS8:
     case IR::Opcode::WriteGlobalU16:
     case IR::Opcode::WriteGlobalS16:
-        info.uses_global_subword_write = true;
-        break;
-    default:
-        break;
-    }
-    switch (inst.GetOpcode()) {
-    case IR::Opcode::WriteGlobalU8:
-    case IR::Opcode::WriteGlobalS8:
-    case IR::Opcode::WriteGlobalU16:
-    case IR::Opcode::WriteGlobalS16:
     case IR::Opcode::WriteGlobal32:
     case IR::Opcode::WriteGlobal64:
     case IR::Opcode::WriteGlobal128:
@@ -434,10 +424,6 @@ void VisitUsages(Info& info, IR::Inst& inst) {
     case IR::Opcode::LoadGlobal128:
         info.uses_int64 = true;
         info.uses_global_memory = true;
-        if (const IR::Opcode op{inst.GetOpcode()};
-            op >= IR::Opcode::GlobalAtomicIAdd32 && op <= IR::Opcode::GlobalAtomicExchange32) {
-            info.uses_global_atomics = true;
-        }
         info.used_constant_buffer_types |= IR::Type::U32 | IR::Type::U32x2;
         info.used_storage_buffer_types |= IR::Type::U32 | IR::Type::U32x2 | IR::Type::U32x4;
         break;
@@ -502,6 +488,11 @@ void VisitUsages(Info& info, IR::Inst& inst) {
     case IR::Opcode::IsTextureScaled:
     case IR::Opcode::IsImageScaled:
         info.uses_rescaling_uniform = true;
+        break;
+    case IR::Opcode::TensorMulAdd:
+        info.uses_subgroup_shuffles = true;
+        info.uses_fp32_denorms_preserve = true;
+        info.uses_subgroup_invocation_id = true;
         break;
     case IR::Opcode::LaneId:
         info.uses_subgroup_invocation_id = true;
@@ -977,10 +968,12 @@ void CollectShaderInfoPass(Environment& env, IR::Program& program) {
         switch (program.stage) {
         case Stage::VertexA:
         case Stage::VertexB:
+        case Stage::Task: // bound in the vertex slot
             return 0x110u;
         case Stage::TessellationControl:
             return 0x210u;
         case Stage::TessellationEval:
+        case Stage::Mesh: // bound in the tessellation slot
             return 0x310u;
         case Stage::Geometry:
             return 0x410u;
@@ -992,6 +985,11 @@ void CollectShaderInfoPass(Environment& env, IR::Program& program) {
         throw InvalidArgument("Invalid stage {}", program.stage);
     }()};
     info.nvn_buffer_base = base;
+    if (program.stage == Stage::Task || program.stage == Stage::Mesh) {
+        // The stage buffer reads the workgroup index; the epilogue splits work by invocation.
+        info.uses_workgroup_id = true;
+        info.uses_local_invocation_id = true;
+    }
 
     for (IR::Block* const block : program.post_order_blocks) {
         for (IR::Inst& inst : block->Instructions()) {

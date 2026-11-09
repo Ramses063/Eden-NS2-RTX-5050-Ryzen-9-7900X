@@ -9,7 +9,6 @@
 #include <memory>
 #include <thread>
 #include <type_traits>
-#include <unordered_map>
 
 #include "common/common_types.h"
 
@@ -45,6 +44,35 @@ public:
     /// Whether the front runs the engines' macros (EDEN_NX2_SPLIT=2).
     [[nodiscard]] bool FrontMacros() const {
         return front_macros;
+    }
+
+    /// Whether the calling thread is the back.
+    [[nodiscard]] static bool OnBackThread() {
+        return on_back_thread;
+    }
+    /// Marks the calling thread as the GPU thread (the front, or the only one without the split).
+    static void MarkGpuThread() {
+        on_gpu_thread = true;
+    }
+    /// Whether the calling thread owns the Vulkan scheduler: the back while it runs, else the
+    /// GPU thread. Other threads (CPU cores, services) must not record or submit work.
+    [[nodiscard]] static bool OwnsScheduler() {
+        return Get().BackRunning() ? on_back_thread : on_gpu_thread;
+    }
+    /// Called on the back before it sleeps waiting for work (the rasterizer submits deferred work).
+    void SetIdleHook(void (*hook)(void*), void* argument) {
+        idle_hook = hook;
+        idle_argument = argument;
+    }
+    /// Any thread: whether the back thread runs (false before it starts and once it stopped).
+    [[nodiscard]] bool BackRunning() const {
+        return back_running.load(std::memory_order_acquire);
+    }
+    /// Any thread: has the back call the idle hook soon, between entries or at once if it sleeps.
+    void RequestIdleHook() {
+        hook_requested.store(true, std::memory_order_seq_cst);
+        wake.fetch_add(1, std::memory_order_seq_cst);
+        wake.notify_one();
     }
 
     /// Starts the back thread once the split is wanted (EDEN_NX2_SPLIT=1, a Switch 2 title,
@@ -91,31 +119,17 @@ public:
     }
     void DeferFunction(std::function<void()>&& func);
 
-    /// A macro the front ran ended: the hook of SetAfterMethod runs after its writes.
-    void AfterMacro() {
-        if (front_after_method != nullptr) {
-            Defer([this] {
-                if (after_method != nullptr) {
-                    after_method(after_method_context);
-                }
-            });
-        }
-    }
-
-    /// Runs `hook(context)` on the back after every command from here on: an executable method
-    /// or run sent from the command list, or a macro run on the front (AfterMacro), in order
-    /// with what was sent before; null stops it. DmaPusher checks for failed native work there,
-    /// which one thread does after every command.
-    void SetAfterMethod(void (*hook)(void*), void* context) {
-        if (hook == front_after_method && context == front_after_context) {
+    /// Runs `func` on the back and waits for it: for work on back-owned state, such as a buffer
+    /// cache download that records into the Vulkan scheduler. A drained back still submits from
+    /// its idle hook, so the front never touches that state itself.
+    template <typename Func>
+    void Run(const Func& func) {
+        if (on_back_thread || !active) {
+            func();
             return;
         }
-        front_after_method = hook;
-        front_after_context = context;
-        Defer([this, hook, context] {
-            after_method = hook;
-            after_method_context = context;
-        });
+        Defer(func);
+        Drain();
     }
 
     /// EDEN_NX2_SPLIT_CHECK=1 (debug): reports, with its stack, a thread other than the back
@@ -123,18 +137,18 @@ public:
     static inline bool check_owner{};
     static void CheckOwner(const char* where);
 
-    /// A semaphore release sent to the back at `address` (front thread only).
-    void NoteRelease(GPUVAddr address) {
-        sent_releases.insert_or_assign(address, write_position);
-    }
-    /// Waits for the back to run the releases sent to [address, address + size): macros on the
-    /// front read memory that the GPU would have written by then (front thread only).
-    void AwaitReleases(GPUVAddr address, u64 size);
-
     /// Makes what was sent visible to the back.
     void Publish();
     /// Waits until the back executed everything sent so far.
     void Drain();
+
+    /// Compute or copy work was just sent: what can write GPU-written command lists.
+    void NoteWriter() {
+        last_writer_position = write_position;
+    }
+    /// Waits until the back executed the compute and copy work sent so far (not what came after).
+    /// Returns whether any of it was still queued.
+    bool WaitForWriters();
 
 private:
     enum class Kind : u64 {
@@ -192,26 +206,39 @@ private:
 
     // Front side.
     u64 write_position{};
+    u64 last_writer_position{};
     u64 published_local{};
     u64 consumed_cache{};
     /// Words between publishes: small right after a drain, while the back has nothing to do.
     size_t publish_every{PublishEvery};
     Tegra::Engines::EngineInterface* front_engine{};
-    void (*front_after_method)(void*){};
-    void* front_after_context{};
-    /// Semaphore releases sent to the back: address, write position after them.
-    std::unordered_map<GPUVAddr, u64> sent_releases;
 
     // Back side.
     Tegra::Engines::EngineInterface* back_engine{};
-    void (*after_method)(void*){};
-    void* after_method_context{};
+
+    /// Whether the back is done with the Vulkan scheduler until it gets more work: set after its
+    /// idle hook ran, cleared before it executes entries.
+    [[nodiscard]] bool BackQuiet() const {
+        return back_quiet.load(std::memory_order_acquire) ||
+               !back_running.load(std::memory_order_acquire);
+    }
 
     static GpuSplit instance;
+    static inline thread_local bool on_back_thread{};
+    static inline thread_local bool on_gpu_thread{};
+    void (*idle_hook)(void*){};
+    void* idle_argument{};
+    alignas(64) std::atomic<bool> hook_requested{};
+    std::atomic<bool> back_running{};
+    std::atomic<bool> back_quiet{true};
 
-    alignas(64) std::atomic<u64> published{};
-    alignas(64) std::atomic<u64> consumed{};
-    alignas(64) std::atomic<bool> back_waiting{};
+    // 128 bytes: x86 spatial prefetchers pull 64-byte lines in pairs. back_waiting and wake are
+    // always touched together by both threads, so they share a block.
+    alignas(128) std::atomic<u64> published{};
+    alignas(128) std::atomic<u64> consumed{};
+    /// A position the front waits for (WaitForWriters): the back stores `consumed` once past it.
+    alignas(128) std::atomic<u64> wait_target{~u64{0}};
+    alignas(128) std::atomic<bool> back_waiting{};
     std::atomic<u32> wake{};
     std::jthread back_thread;
 };

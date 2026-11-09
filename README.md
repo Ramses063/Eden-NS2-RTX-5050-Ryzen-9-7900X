@@ -1,93 +1,84 @@
-# Eden NS2
+<!--
+# SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+# SPDX-License-Identifier: GPL-3.0-or-later
 
-A fork of the [Eden](https://git.eden-emu.dev/eden-emu/eden) Nintendo Switch emulator that runs
-Nintendo Switch 2 games.
+# SPDX-FileCopyrightText: 2018 yuzu Emulator Project
+# SPDX-License-Identifier: GPL-2.0-or-later
+-->
+<!-- lang: en-GB -->
 
-![Donkey Kong Bananza gameplay](docs/ns2/screenshots/bananza-cave.png)
+<h1 align="center">
+  <br>
+  <a href="https://git.eden-emu.dev/eden-emu/eden"><img src="https://github.com/user-attachments/assets/35031845-4bfa-4916-8bf5-bc3bce67d5e2" alt="Eglantine" width="200"></a>
+  <br>
+  <b>Eglantine</b>
+  <br>
+</h1>
 
-![Mario Kart World title screen](docs/ns2/screenshots/mario-kart-world-title.png)
+<h4 align="center"><b>Eglantine</b> is a free and opensource (FOSS) Switch 2 emulator, derived from Eden, Yuzu and Sudachi - started by developer Camille LaVey.
+It's written in C++ with portability in mind, with builds for Windows, Linux and macOS
+</h4>
 
-![Pokémon Pokopia gameplay](docs/ns2/screenshots/pokopia-gameplay.png)
+<p align="center">
+    </a>
+    <a href="https://discord.gg/XkS5NVPTUY">
+        <img src="https://img.shields.io/discord/1367654015269339267?color=5865F2&label=Eglantine&logo=discord&logoColor=white"
+            alt="Discord">
+    </a>
+  
+</p>
 
-## Status
+<p align="center">
+  <a href="#compatibility">Compatibility</a> |
+  <a href="#development">Development</a> |
+  <a href="#building">Building</a> |
+  <a href="#download">Download</a> |
+  <a href="#support">Support</a> |
+  <a href="#license">License</a>
+</p>
 
-| Game | State |
-| --- | --- |
-| Donkey Kong Bananza (`040074A01BF12000`, v7.0.0) | Playable; slow in some areas |
-| Mario Kart World (`0400C3F00006E000`, v1.8.0) | Playable; slow in some areas |
-| Pokémon Pokopia (`0400A3A01EE4C000`) | Playable; stable 60 FPS |
-| Splatoon Raiders (`0400380020056000`) | Playable; stable 60 FPS |
-| Nintendo Switch 2 Welcome Tour (`040057C02159A000`) | Boots; runs very slowly |
+## Compatibility
 
-### Known issues
+The emulator is capable of running Mario Kart World at decent/full speed depending on specs and configurations, and Splatoon Raiders at variable performances
 
-- **Performance:** still a work in progress; expect slowdowns and stutter.
-- **Donkey Kong Bananza:** destructible terrain is invisible on AMD GPUs.
-- **Mario Kart World:** loading screens can take a long time, especially the first time a course is
-  loaded. Recommended per-game settings: GPU accuracy Low, asynchronous shaders on, and ASTC
-  recompression BC3 (needed on GPUs with less than 8 GB of video memory). Some geometry
-  (task/mesh shaders) is missing, and character eye textures and shadows can look glitchy.
-- **Nintendo Switch 2 Welcome Tour:** reaches the intro and the tour, but runs very slowly.
+A list of supported games will be available in future. Please be patient.
 
-## Building (Windows, MSYS2 MINGW64)
+## Development
 
-1. Install [MSYS2](https://www.msys2.org) and, in a **MINGW64** shell, install the MinGW toolchain,
-   CMake, Ninja, Qt 6, FFmpeg, SDL3, Boost, OpenSSL and the Vulkan headers, plus git, patch and autotools
-   (for example `pacman -S --needed mingw-w64-x86_64-{toolchain,cmake,ninja,qt6,ffmpeg,sdl3,boost,openssl,vulkan-headers} git patch autotools`;
-   exact package names may differ — see [docs/Deps.md](docs/Deps.md)).
-2. Configure and build from the repository root:
+For development discussions, please join us on [Discord](https://discord.gg/XkS5NVPTUY)
 
-   ```sh
-   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DYUZU_TESTS=OFF \
-         -DENABLE_WERROR=OFF -DYUZU_ROOM=OFF -DYUZU_CMD=OFF -DENABLE_LIBUSB=OFF \
-         -Denet_FORCE_BUNDLED=ON -Dlibusb_FORCE_BUNDLED=ON -DVulkanMemoryAllocator_FORCE_BUNDLED=ON
-   ninja -C build yuzu
-   ```
+If you would like to contribute, we are open to new developers and pull requests. Please ensure that your work is of a high standard and properly documented. You can also contact any of the developers on Discord or Stoat to learn more about the current state of the emulator.
 
-3. Copy the MinGW runtime DLLs (Qt and its dependencies) next to `build/bin/eden.exe` and add a
-   `build/bin/qt.conf` containing `[Paths]` / `Plugins = plugins` (see [docs/ns2/NOTES.md](docs/ns2/NOTES.md)).
+## Documentation
 
-The NS2 patch's MSVC script (`build-eden-msvc.bat`) is included but has not been tried with this tree.
+We have a user manual! See our [User Handbook](./docs/user/README.md).
 
-## Building (Linux)
+## Building
 
-Not tested yet; nothing in the changes is Windows-only.
+See the [General Build Guide](docs/Build.md)
 
-1. Install the dependencies for your distribution; [docs/Deps.md](docs/Deps.md) has full commands for
-   Arch, Debian/Ubuntu/Mint, Fedora, Gentoo and others. For example:
+For information on provided development tooling, see the [Tools directory](./tools)
 
-   ```sh
-   # Arch
-   sudo pacman -Syu --needed base-devel boost catch2 cmake enet ffmpeg fmt git glslang libzip lz4 ninja \
-        nlohmann-json openssl opus qt6-base qt6-multimedia qt6-charts sdl3 zlib zstd zip unzip \
-        vulkan-headers vulkan-utility-libraries libusb spirv-tools spirv-headers
-   ```
+## Download
 
-2. Configure and build from the repository root:
+You can download the latest releases from [here](https://github.com/Djihads80/Eglantine/releases).
 
-   ```sh
-   cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DYUZU_TESTS=OFF \
-         -DENABLE_WERROR=OFF
-   ninja -C build yuzu
-   ```
+## Support
 
-   If CMake cannot find a package your distribution doesn't ship (enet, libusb,
-   VulkanMemoryAllocator, ...), add the matching `-D<name>_FORCE_BUNDLED=ON` flag from the Windows
-   command above.
-3. The binary is `build/bin/eden`; no DLL copying is needed.
+We currently do not take in any donations for the time being
 
-## Running
+If you would prefer to support us in a different way, please join our [Discord](https://discord.gg/XkS5NVPTUY)
 
-Use your own dumped games, keys and firmware. Load a game from its extracted dump (the `romfs`
-folder next to `exefs` is found automatically):
+## Star History
 
-```sh
-build/bin/eden -g "<dump>/updates/<version>/exefs/main"
-```
+<a href="https://www.star-history.com/?repos=djihads80%2Feglantine&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=djihads80/eglantine&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=djihads80/eglantine&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=djihads80/eglantine&type=date&legend=bottom-right" />
+ </picture>
+</a>
 
-Recommended settings: Vulkan, 12 GB memory layout, multi-core CPU.
+## License
 
-## Licence
-
-GPL-3.0-or-later, like Eden (see [LICENSE.txt](LICENSE.txt)). Not affiliated with the Eden project
-or Nintendo; no game data, keys or firmware are included.
+Eglantine is licensed under the GPLv3 (or any later version). Refer to the [LICENSE.txt](https://github.com/Djihads80/Eglantine/blob/nx2/LICENSE.txt) file.

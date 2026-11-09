@@ -7,8 +7,6 @@
 #pragma once
 
 #include <memory>
-#include "video_core/macro_turing.h"
-#include "video_core/native_qmd.h"
 #include "video_core/macro_memo.h"
 #include "video_core/macro_turing.h"
 
@@ -271,11 +269,6 @@ struct MacroEngine {
 };
 
 struct NativeMacroContext {
-    // PCAS dependency signals can arrive through different channels of one TSG.
-    NativeQmdScheduler& GetQmdScheduler(u64 address_space) {
-        return qmd_schedulers[address_space];
-    }
-    std::unordered_map<u64, NativeQmdScheduler> qmd_schedulers;
     MacroEngine engine{true};
     std::array<u32, 0x80> positions{};
     MacroEngine compute_engine{true};
