@@ -71,6 +71,8 @@
 #include <QActionGroup>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QCollator>
+#include <algorithm>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
@@ -2769,26 +2771,81 @@ void MainWindow::OnMenuLoadFile() {
         return;
     }
 
+    if (QFileInfo(filename).suffix().compare(QStringLiteral("nup"), Qt::CaseInsensitive) == 0) {
+        QMessageBox::warning(this, tr("Unsupported File"),
+                             tr(".nup packages can't be loaded directly. Extract the game first, "
+                                "then use File > Load Folder and pick the game's folder."));
+        return;
+    }
+
     UISettings::values.roms_path = QFileInfo(filename).path().toStdString();
     BootGame(filename, ApplicationAppletParameters());
 }
 
 void MainWindow::OnMenuLoadFolder() {
-    const QString dir_path =
-        QFileDialog::getExistingDirectory(this, tr("Open Extracted ROM Directory"));
+    const QString dir_path = QFileDialog::getExistingDirectory(
+        this, tr("Open Extracted ROM Directory"),
+        QString::fromStdString(UISettings::values.roms_path));
 
     if (dir_path.isNull()) {
         return;
     }
 
+    // Accept the exefs folder itself, the game's top folder (exefs/main), or a dump with
+    // updates/<version>/exefs/main. Newer updates are listed first.
     const QDir dir{dir_path};
-    const QStringList matching_main = dir.entryList({QStringLiteral("main")}, QDir::Files);
-    if (matching_main.size() == 1) {
-        BootGame(dir.path() + QDir::separator() + matching_main[0], ApplicationAppletParameters());
-    } else {
-        QMessageBox::warning(this, tr("Invalid Directory Selected"),
-                             tr("The directory you have selected does not contain a 'main' file."));
+    QStringList candidates;
+    const auto add_if_main = [&candidates](const QDir& d) {
+        if (d.exists(QStringLiteral("main"))) {
+            candidates.append(QDir::cleanPath(d.filePath(QStringLiteral("main"))));
+        }
+    };
+
+    add_if_main(dir);
+    const QDir updates_dir{dir.filePath(QStringLiteral("updates"))};
+    if (updates_dir.exists()) {
+        QStringList versions = updates_dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        QCollator collator;
+        collator.setNumericMode(true);
+        std::sort(versions.begin(), versions.end(),
+                  [&collator](const QString& a, const QString& b) {
+                      return collator.compare(a, b) > 0;
+                  });
+        for (const QString& version : versions) {
+            add_if_main(QDir{updates_dir.filePath(version + QStringLiteral("/exefs"))});
+        }
     }
+    add_if_main(QDir{dir.filePath(QStringLiteral("exefs"))});
+
+    if (candidates.isEmpty()) {
+        const bool has_nup = !dir.entryList({QStringLiteral("*.nup")}, QDir::Files).isEmpty();
+        QMessageBox::warning(
+            this, tr("Invalid Directory Selected"),
+            has_nup ? tr("This folder has a .nup package, which can't be loaded directly. Extract "
+                         "the game first so it has an exefs folder with a 'main' file.")
+                    : tr("The directory you have selected does not contain a 'main' file, an "
+                         "exefs folder, or an updates folder."));
+        return;
+    }
+
+    QString selected = candidates.front();
+    if (candidates.size() > 1) {
+        QStringList labels;
+        for (const QString& path : candidates) {
+            labels.append(QDir::toNativeSeparators(dir.relativeFilePath(path)));
+        }
+        bool ok = false;
+        const QString choice = QInputDialog::getItem(
+            this, tr("Select Version"), tr("This game has more than one version. Which one?"),
+            labels, 0, false, &ok);
+        if (!ok) {
+            return;
+        }
+        selected = candidates[labels.indexOf(choice)];
+    }
+
+    UISettings::values.roms_path = dir.path().toStdString();
+    BootGame(selected, ApplicationAppletParameters());
 }
 
 void MainWindow::IncrementInstallProgress() {
